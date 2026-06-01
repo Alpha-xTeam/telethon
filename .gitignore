@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+*.session
+*.session-journal
+.env
+autopublish.json
+downloads/
+*.log
+.venv/
+venv/
+.DS_Store
