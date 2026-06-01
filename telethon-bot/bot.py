@@ -1,4 +1,4 @@
-import os, sys, json, time, asyncio, logging
+import os, sys, json, time, asyncio, logging, math, random
 from datetime import datetime
 from pathlib import Path
 
@@ -105,6 +105,22 @@ async def save_auto_config(user_id, config):
         await supa_upsert("user_prefs", {"user_id": user_id, "prefs": {"autopublish": config}})
 
 
+def setup_dot_handlers(client):
+    @client.on(events.NewMessage(outgoing=True, pattern=r"^\."))
+    async def user_dot_handler(event):
+        await process_dot_command(event, event.client)
+
+
+async def handle_dot(event):
+    text = event.raw_text.strip()
+    if not text.startswith("."):
+        return
+    c = await get_client(event)
+    if not c:
+        return
+    await process_dot_command(event, c)
+
+
 async def get_or_create_client(user_id):
     global _owner_client
     rows = await supa_select("sessions", {"user_id": user_id})
@@ -120,9 +136,12 @@ async def get_or_create_client(user_id):
     ah = row.get("api_hash") or API_HASH
     if user_id == OWNER_ID and _owner_client and _owner_client.is_connected():
         return _owner_client, "ok"
+    if user_id in user_clients and user_clients[user_id] and user_clients[user_id].is_connected():
+        return user_clients[user_id], "ok"
     try:
         client = TelegramClient(StringSession(ss), aid, ah)
         await client.start()
+        setup_dot_handlers(client)
         if user_id == OWNER_ID:
             _owner_client = client
         user_clients[user_id] = client
@@ -150,6 +169,7 @@ async def get_user_client(user_id):
         try:
             c = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
             await c.start()
+            setup_dot_handlers(c)
             await save_session(user_id, c)
             global _owner_client
             _owner_client = c
@@ -554,9 +574,187 @@ async def show_auto_groups(event, uid, page=0):
         await event.edit(f"خطأ : {e}", buttons=auto_markup(ac))
 
 
-@bot_client.on(events.NewMessage(incoming=True))
+DOT_HELP = """**اوامر النقطة (.)**
+
+`.id` - ايدي الحساب او المحادثة
+`.me` - معلومات حسابك
+`.ping` - سرعة الاستجابة
+`.info <username>` - معلومات مستخدم
+`.del <n>` - حذف رسائل
+`.block <user>` - حظر
+`.unblock <user>` - الغاء الحظر
+`.leave` - مغادرة المحادثة
+`.q <text>` - عرض النص بشكل جميل
+`.bold <text>` - نص عريض
+`.italic <text>` - نص مائل
+`.mono <text>` - نص احادي المسافة
+`.strike <text>` - نص مشطوب
+`.underline <text>` - نص تحته خط
+`.upper <text>` - نص كبير
+`.small <text>` - نص صغير
+`.mock <text>` - نص ساخر
+`.reverse <text>` - عكس النص
+`.hash <word>` - توليد هاشتاقات
+`.calc <expr>` - آلة حاسبة
+`.date` - التاريخ والوقت
+`.emoji <text>` - تحويل النص لاموجيات
+`.agree` - موافقة على الشروط
+`.accept` - تأكيد"""
+
+_small_t = str.maketrans("abcdefghijklmnopqrstuvwxyz0123456789", "ᵃᵇᶜᵈᵉᶠᵍʰⁱʲᵏˡᵐⁿᵒᵖqʳˢᵗᵘᵛʷˣʸᶻ⁰¹²³⁴⁵⁶⁷⁸⁹")
+
+
+async def process_dot_command(event, c):
+    uid = event.sender_id
+    text = event.raw_text.strip()
+    if not text.startswith("."):
+        return
+    parts = text.split(maxsplit=1)
+    cmd = parts[0][1:].lower()
+    arg = parts[1] if len(parts) > 1 else ""
+    no_client = ("ping", "id", "date", "help", "calc", "hash", "agree", "accept", "emoji", "q", "bold", "italic", "mono", "strike", "underline", "upper", "small", "mock", "reverse", "hash")
+    if not c and cmd not in no_client:
+        return
+
+    if cmd == "help":
+        return await event.reply(DOT_HELP)
+
+    if cmd == "ping":
+        s = datetime.now()
+        m = await event.reply("🏓 ...")
+        ms = (datetime.now() - s).microseconds // 1000
+        await m.edit(f"🏓 **{ms}ms**")
+
+    elif cmd == "id":
+        if event.is_reply:
+            rm = await event.get_reply_message()
+            return await event.reply(f"`{rm.sender_id}`")
+        await event.reply(f"`{uid}`")
+
+    elif cmd == "me":
+        try:
+            u = await c.get_me()
+            fn = await c(functions.users.GetFullUserRequest(u.id))
+            b = fn.full_user.about or "—"
+            await event.reply(f"**{utils.get_display_name(u)}**\n@{u.username or '—'}\n\nالآيدي: `{u.id}`\nالرقم: `+{u.phone or '—'}`\nالبايو: {b}")
+        except Exception as e:
+            await event.reply(f"خطأ: {e}")
+
+    elif cmd == "info":
+        if not arg:
+            return await event.reply("ارسـل يوزر بعده\nمثال: `.info @username`")
+        try:
+            u = await c.get_entity(arg)
+            fn = await c(functions.users.GetFullUserRequest(u.id))
+            await event.reply(f"**{utils.get_display_name(u)}**\n@{u.username or '—'}\nالآيدي: `{u.id}`\nالبايو: {fn.full_user.about or '—'}\nبوت: {'✅' if u.bot else '❌'}")
+        except Exception as e:
+            await event.reply(f"خطأ: {e}")
+
+    elif cmd == "del":
+        n = 1
+        if arg and arg.isdigit():
+            n = min(int(arg), 50)
+        try:
+            if event.is_reply and n == 1:
+                rm = await event.get_reply_message()
+                await c.delete_messages(rm.chat_id, [rm.id])
+                await event.reply("✅")
+            else:
+                msgs = [m.id async for m in c.iter_messages(uid, limit=n, from_user="me")]
+                if msgs:
+                    await c.delete_messages(uid, msgs)
+                await event.reply(f"✅ حذف {len(msgs)}")
+        except Exception as e:
+            await event.reply(f"خطأ: {e}")
+
+    elif cmd == "block":
+        if not arg: return await event.reply("ارسـل يوزر")
+        try:
+            await c(functions.contacts.BlockRequest(arg))
+            await event.reply("✅")
+        except Exception as e:
+            await event.reply(f"خطأ: {e}")
+
+    elif cmd == "unblock":
+        if not arg: return await event.reply("ارسـل يوزر")
+        try:
+            await c(functions.contacts.UnblockRequest(arg))
+            await event.reply("✅")
+        except Exception as e:
+            await event.reply(f"خطأ: {e}")
+
+    elif cmd == "leave":
+        chat = arg or (await event.get_reply_message()).chat_id if event.is_reply else None
+        if not chat: return await event.reply("ارسـل آيدي المحادثة")
+        try:
+            await c(functions.channels.LeaveChannelRequest(int(chat) if str(chat).isdigit() else chat))
+            await event.reply("✅")
+        except Exception as e:
+            await event.reply(f"خطأ: {e}")
+
+    elif cmd == "q":
+        t = arg or (await event.get_reply_message()).raw_text if event.is_reply else ""
+        if not t: return await event.reply("ارسـل نص او رد على رسالة")
+        await event.reply(f"📌 **{t}**")
+
+    elif cmd in ("bold", "italic", "mono", "strike", "underline"):
+        if not arg: return await event.reply("ارسـل نص")
+        fmts = {"bold": "**{}**", "italic": "__{}__", "mono": "`{}`", "strike": "~~{}~~", "underline": "--{}--"}
+        await event.reply(fmts[cmd].format(arg))
+
+    elif cmd == "upper":
+        if not arg: return await event.reply("ارسـل نص")
+        await event.reply(arg.upper())
+
+    elif cmd == "small":
+        if not arg: return await event.reply("ارسـل نص")
+        await event.reply(arg.lower().translate(_small_t))
+
+    elif cmd == "mock":
+        if not arg: return await event.reply("ارسـل نص")
+        await event.reply("".join(c.upper() if i % 2 else c.lower() for i, c in enumerate(arg)))
+
+    elif cmd == "reverse":
+        if not arg: return await event.reply("ارسـل نص")
+        await event.reply(arg[::-1])
+
+    elif cmd == "hash":
+        if not arg: return await event.reply("ارسـل كلمة")
+        words = arg.split()
+        hs = "\n".join(f"#{w}" for w in words)
+        await event.reply(hs + "\n" + "\n".join(f"#{w.capitalize()}" for w in words))
+
+    elif cmd == "calc":
+        if not arg: return await event.reply("ارسـل عملية\nمثال: `.calc 2+2*3`")
+        try:
+            r = eval(arg, {"__builtins__": {}}, {"math": math})
+            await event.reply(f"`{arg} = {r}`")
+        except Exception as e:
+            await event.reply(f"خطأ: {e}")
+
+    elif cmd == "date":
+        n = datetime.now()
+        await event.reply(n.strftime("📅 %Y/%m/%d\n⏰ %H:%M:%S"))
+
+    elif cmd == "emoji":
+        if not arg: return await event.reply("ارسـل نص")
+        em = arg.replace("a", "🅰").replace("b", "🅱").replace("c", "🅲").replace("d", "🅳").replace("e", "🅴").replace("o", "🅾")
+        await event.reply(em)
+
+    elif cmd == "agree":
+        await event.reply("✅ تمت الموافقة على الشروط والاحكام")
+
+    elif cmd == "accept":
+        await event.reply("✅ تم التأكيد")
+
+    else:
+        await event.reply(f"❌ أمر غير معروف. استخدم `.help`")
+
+
 async def text_handler(event):
     uid = event.sender_id
+    if event.raw_text.startswith("."):
+        return await handle_dot(event)
     if uid not in user_states or event.raw_text.startswith("/"):
         return
     action = user_states[uid].get("action", "")
