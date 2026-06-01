@@ -20,10 +20,10 @@
 - Python 3.11+ (use 3.11-slim in Docker for consistency)
 
 ## Database
-- Supabase project `azhrxvngrovywstizads` (ap-northeast-1) available on request
-- Supabase is optional — each bot chooses its own storage
-- Existing tables: `sessions` (user auth), `bot_config` (global settings), `user_prefs` (per-user prefs)
-- Service role key is in environment
+- Supabase project `azhrxvngrovywstizads` (ap-northeast-1) — **خاص بـ `telethon-bot/` فقط**
+- بقية البوتات تخزن بالطريقة اللي تناسبها (ملفات، قاعدة بيانات أخرى، أو بدون تخزين)
+- جداول `telethon-bot` في Supabase: `sessions`, `bot_config`, `user_prefs`
+- Service role key في environment variables
 
 ## Naming Convention
 - Each bot in its own subfolder: `{bot-name}/`
