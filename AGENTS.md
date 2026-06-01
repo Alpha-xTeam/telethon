@@ -11,20 +11,22 @@
 - All bots must display this info in the welcome/start message
 
 ## Platform
-- All bots deploy on Hugging Face Spaces (Docker SDK)
-- HF Spaces BLOCKS `api.telegram.org` (HTTPS) — bots using MTProto (Telethon) work, bots using HTTP (PTB) do NOT
-- For bots that need to bypass: use Telethon (MTProto, connects to 149.154.167.51)
+- Bots deploy on Hugging Face Spaces (Docker SDK)
+- HF Spaces BLOCKS `api.telegram.org` (HTTPS) — bots using PTB (HTTP) will NOT work
+- Workaround: use Telethon (MTProto, connects to 149.154.167.51) instead of python-telegram-bot
+- If you don't use HF Spaces, either library is fine
 
 ## Python Version
 - Python 3.11+ (use 3.11-slim in Docker for consistency)
 
 ## Database
-- Supabase project `azhrxvngrovywstizads` (ap-northeast-1) is available
-- Tables: `sessions` (user auth), `bot_config` (global settings), `user_prefs` (per-user prefs)
+- Supabase project `azhrxvngrovywstizads` (ap-northeast-1) available on request
+- Supabase is optional — each bot chooses its own storage
+- Existing tables: `sessions` (user auth), `bot_config` (global settings), `user_prefs` (per-user prefs)
 - Service role key is in environment
 
 ## Naming Convention
-- Each bot in a numbered subfolder: `NN-name/`
+- Each bot in its own subfolder: `{bot-name}/`
 - `bot.py` is the main entry point
 - `.env` for secrets (gitignored)
 - `requirements.txt` for dependencies
@@ -36,9 +38,10 @@
 - Arabic strings for user-facing messages
 - Async/await throughout
 - Inline keyboards with `Button.inline()` (Telethon) or `InlineKeyboardButton` (PTB)
-- All persistent data in Supabase, NOT in files
+- Persistent data in Supabase OR files — depending on the bot's needs
+- `.gitignore` must exclude `.env`, session files (`*.session`), and any credentials
 
 ## Deployment
 - HF Space name format: `hsoneabadi/{bot-name}`
-- Secrets: BOT_TOKEN, API_ID, API_HASH, SUPABASE_URL, SUPABASE_SERVICE_KEY
+- Secrets depend on the bot (BOT_TOKEN always needed, API_ID/API_HASH if Telethon, etc.)
 - Environment variables via `.env` locally, HF Secrets in production
