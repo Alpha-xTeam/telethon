@@ -311,7 +311,7 @@ async def get_client(event):
     return None
 
 
-WELCOME_TEXT = "── ─ ── ─ ──\n\n**🤖 بوت تحكم بحسابات تيليجرام**\n\nتم التطوير بواسطة: @hsabadi\nقناة البوتات: @xtraforbots"
+WELCOME_TEXT = "── ─ ── ─ ──\n\n**🤖 XTRA SOURCE**\n\nتم التطوير بواسطة: @hsabadi\nقناة البوتات: @xtraforbots"
 
 
 @bot_client.on(events.NewMessage(pattern="/start"))
@@ -326,7 +326,17 @@ async def start_handler(event):
     elif rows and rows[0].get("is_active") and rows[0].get("api_id") and rows[0].get("api_hash"):
         await event.reply(f"{WELCOME_TEXT}\n\n📱 سجل دخولك للبدء", buttons=[[btn("📱 تسجيل الدخول", "register")]])
     else:
-        await event.reply(f"{WELCOME_TEXT}\n\n❌ أنت غير مشترك. تواصل مع المالك @hsabadi للاشتراك")
+        welcome_unsub = (
+            f"── ─ ── ─ ──\n\n"
+            f"**🤖 أهلاً بك في XTRA SOURCE**\n\n"
+            f"هذا البوت مخصص للتحكم وإدارة حسابات تيليجرام بشكل احترافي وتلقائي.\n\n"
+            f"⚠️ **تنبيه:** حسابك غير مفعل حالياً في الخدمة.\n\n"
+            f"👑 المطور: @hsabadi\n"
+            f"📢 قناة البوتات: @xtraforbots\n\n"
+            f"للاشتراك وتفعيل حسابك، اضغط على الزر أدناه للتواصل."
+        )
+        buttons = [[Button.url("💬 تواصل للاشتراك", "https://t.me/hsabadi")]]
+        await event.reply(welcome_unsub, buttons=buttons)
 
 
 @bot_client.on(events.NewMessage(pattern="/cancel"))
