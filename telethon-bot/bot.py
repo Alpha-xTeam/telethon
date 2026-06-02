@@ -319,10 +319,14 @@ async def start_handler(event):
     uid = event.sender_id
     if uid == OWNER_ID:
         await event.reply(f"{WELCOME_TEXT}\n\n**👑 القائمة الرئيسية**", buttons=main_menu_markup(True))
-    elif await subscriber_check(event):
+        return
+    rows = await supa_select("sessions", {"user_id": uid})
+    if rows and rows[0].get("is_active") and rows[0].get("session_string"):
         await event.reply(f"{WELCOME_TEXT}\n\n**🤖 القائمة**", buttons=main_menu_markup(False))
+    elif rows and rows[0].get("is_active") and rows[0].get("api_id") and rows[0].get("api_hash"):
+        await event.reply(f"{WELCOME_TEXT}\n\n📱 سجل دخولك للبدء", buttons=[[btn("📱 تسجيل الدخول", "register")]])
     else:
-        await event.reply(f"{WELCOME_TEXT}\n\n❌ أنت غير مشترك. تواصل مع المالك للاشتراك")
+        await event.reply(f"{WELCOME_TEXT}\n\n❌ أنت غير مشترك. تواصل مع المالك @hsabadi للاشتراك")
 
 
 @bot_client.on(events.NewMessage(pattern="/cancel"))
@@ -341,12 +345,24 @@ async def cb_handler(event):
     uid = event.sender_id
     is_owner = uid == OWNER_ID
 
-    skip_client = data in ("menu_main", "noop", "admin", "admin_add", "admin_setapi", "admin_remove", "admin_list")
+    skip_client = data in ("menu_main", "noop", "admin", "admin_add", "admin_setapi", "admin_remove", "admin_list", "register")
     c = None if skip_client else await get_client(event)
     if not c and not skip_client:
         if is_owner:
             return await event.edit("❌ فشل الاتصال بحسابك")
         return await event.edit("❌ غير مشترك")
+
+    if data == "register":
+        rows = await supa_select("sessions", {"user_id": uid})
+        if not rows:
+            return await event.edit("❌ أنت غير مشترك")
+        row = rows[0]
+        aid, ah = row.get("api_id"), row.get("api_hash")
+        if not aid or not ah:
+            return await event.edit("❌ ما عندك API_ID/HASH. تواصل مع المالك")
+        user_states[uid] = {"action": "auth_phone", "api_id": aid, "api_hash": ah}
+        await event.edit("📱 أرسل رقم هاتفك (مع مفتاح الدولة)\nمثال: `+9647xxxxxxxx`")
+        return
 
     if data == "menu_main":
         mk = main_menu_markup(is_owner)
