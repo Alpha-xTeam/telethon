@@ -232,9 +232,9 @@ def profile_markup():
 
 def admin_markup():
     return [
-        [btn("➕ اضافة مشترك", "admin_add")],
-        [btn("🔑 تعيين API", "admin_setapi")],
-        [btn("❌ حذف مشترك", "admin_remove")],
+        [btn("➕ اضافة مشترك", "admin_add"), btn("🔑 تعيين API", "admin_setapi")],
+        [btn("🚫 حظر مشترك", "admin_block"), btn("✅ الغاء حظر", "admin_unblock")],
+        [btn("❌ حذف مشترك", "admin_remove"), btn("📢 اذاعة للكل", "admin_broadcast")],
         [btn("📋 قائمة المشتركين", "admin_list")],
         [btn("🔙 رجوع", "menu_main")],
     ]
@@ -345,7 +345,7 @@ async def cb_handler(event):
     uid = event.sender_id
     is_owner = uid == OWNER_ID
 
-    skip_client = data in ("menu_main", "noop", "admin", "admin_add", "admin_setapi", "admin_remove", "admin_list", "register")
+    skip_client = data in ("menu_main", "noop", "admin", "admin_add", "admin_setapi", "admin_remove", "admin_list", "register", "admin_block", "admin_unblock", "admin_broadcast")
     c = None if skip_client else await get_client(event)
     if not c and not skip_client:
         if is_owner:
@@ -430,6 +430,21 @@ async def cb_handler(event):
             user_states[uid] = {"action": "admin_remove_id"}
             await event.edit("ارسـل آيدي المشترك", buttons=back_btn())
 
+        elif data == "admin_block":
+            if not is_owner: return
+            user_states[uid] = {"action": "admin_block_id"}
+            await event.edit("ارسـل آيدي المشترك لحظره", buttons=back_btn())
+
+        elif data == "admin_unblock":
+            if not is_owner: return
+            user_states[uid] = {"action": "admin_unblock_id"}
+            await event.edit("ارسـل آيدي المشترك لإلغاء الحظر", buttons=back_btn())
+
+        elif data == "admin_broadcast":
+            if not is_owner: return
+            user_states[uid] = {"action": "admin_broadcast_msg"}
+            await event.edit("ارسـل رسالة الاذاعة (نص، صورة، الخ)", buttons=back_btn())
+
         elif data == "admin_list":
             if not is_owner: return
             rows = await supa_select("sessions")
@@ -492,14 +507,18 @@ async def cb_handler(event):
             ac = await get_auto_config(uid)
             _auto_groups_data[uid] = {"config": ac}
             st = "🟢" if ac["enabled"] else "🔴"
-            t = ac["text"][:40] + ".." if ac["text"] else "—"
+            import re
+            clean_t = re.sub('<[^<]+?>', '', ac["text"]) if ac.get("text") else ""
+            t = clean_t[:40] + ".." if clean_t else "—"
             await event.edit(f"── ─ ── ─ ──\n\n**🔄 نشر**\n{st} {t}\n⏱ {ac['interval']}ث\n👥 {len(ac['groups'])}", buttons=auto_markup(ac))
 
         elif data == "auto_status":
             ac = await get_auto_config(uid)
             _auto_groups_data[uid] = {"config": ac}
             st = "🟢 شغال" if ac["enabled"] else "🔴 موقف"
-            t = ac["text"][:50] + ".." if ac["text"] else "—"
+            import re
+            clean_t = re.sub('<[^<]+?>', '', ac["text"]) if ac.get("text") else ""
+            t = clean_t[:50] + ".." if clean_t else "—"
             await event.edit(f"── ─ ── ─ ──\n\nالحالة : {st}\nالنص : {t}\nالمدة : {ac['interval']}ث\nالكروبات : {len(ac['groups'])}", buttons=auto_markup(ac))
 
         elif data == "auto_settext":
@@ -522,7 +541,9 @@ async def cb_handler(event):
             if tuid != uid: return
             ac = _auto_groups_data.get(tuid, {}).get("config") or await get_auto_config(tuid)
             st = "🟢" if ac["enabled"] else "🔴"
-            t = ac["text"][:40] + ".." if ac["text"] else "—"
+            import re
+            clean_t = re.sub('<[^<]+?>', '', ac["text"]) if ac.get("text") else ""
+            t = clean_t[:40] + ".." if clean_t else "—"
             await event.edit(f"── ─ ── ─ ──\n\n**🔄 نشر**\n{st} {t}\n⏱ {ac['interval']}ث\n👥 {len(ac['groups'])}", buttons=auto_markup(ac))
 
         elif data.startswith("ag_t|"):
@@ -929,7 +950,8 @@ async def text_handler(event):
 
         elif action == "auto_text":
             ac = await get_auto_config(uid)
-            ac["text"] = text
+            from telethon.extensions import html
+            ac["text"] = html.unparse(event.message.message, event.message.entities)
             await save_auto_config(uid, ac)
             await event.reply("✅")
 
@@ -1012,6 +1034,49 @@ async def handle_admin_text(event, action, text):
             user_clients.pop(tid, None)
         await event.reply(f"✅ تم حذف `{target_id}`")
 
+    elif action == "admin_block_id":
+        target_id = text.strip()
+        tid = int(target_id) if target_id.isdigit() else 0
+        rows = await supa_select("sessions", {"user_id": tid})
+        if not rows:
+            await event.reply("المشترك غير موجود"); return
+        await supa_update("sessions", {"is_active": False}, {"user_id": tid})
+        if tid in user_clients:
+            try:
+                await user_clients[tid].disconnect()
+            except Exception:
+                pass
+            user_clients.pop(tid, None)
+        await event.reply(f"🚫 تم حظر المشترك `{target_id}` بنجاح")
+
+    elif action == "admin_unblock_id":
+        target_id = text.strip()
+        tid = int(target_id) if target_id.isdigit() else 0
+        rows = await supa_select("sessions", {"user_id": tid})
+        if not rows:
+            await event.reply("المشترك غير موجود"); return
+        await supa_update("sessions", {"is_active": True}, {"user_id": tid})
+        await event.reply(f"✅ تم إلغاء حظر المشترك `{target_id}` بنجاح")
+
+    elif action == "admin_broadcast_msg":
+        await event.reply("⏳ جاري بدء الإذاعة للكل...")
+        rows = await supa_select("sessions")
+        if not rows:
+            await event.reply("لا يوجد مشتركين للإرسال إليهم"); return
+        success = 0
+        failed = 0
+        for r in rows:
+            tid = r.get("user_id")
+            if not tid or tid == OWNER_ID:
+                continue
+            try:
+                await bot_client.send_message(tid, event.message)
+                success += 1
+                await asyncio.sleep(0.2)
+            except Exception:
+                failed += 1
+        await event.reply(f"📢 **تمت الإذاعة بنجاح!**\n\n🟢 نجاح: {success}\n🔴 فشل: {failed}")
+
     user_states.pop(uid, None)
 
 
@@ -1041,7 +1106,7 @@ async def auto_sender():
                         continue
                     for chat_id in ac["groups"]:
                         try:
-                            await oc.send_message(chat_id, ac["text"])
+                            await oc.send_message(chat_id, ac["text"], parse_mode='html')
                             await asyncio.sleep(2)
                         except Exception:
                             pass
