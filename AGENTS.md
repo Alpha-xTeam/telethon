@@ -45,3 +45,40 @@
 - HF Space name format: `hsoneabadi/{bot-name}`
 - Secrets depend on the bot (BOT_TOKEN always needed, API_ID/API_HASH if Telethon, etc.)
 - Environment variables via `.env` locally, HF Secrets in production
+
+## Developer Control Panel Guidelines
+- The Developer Control Panel for all current and future bots must include:
+  1. Complete bot statistics.
+  2. A JSON file (`stats.json`) to store user info, bot info, and force subscription channels.
+  3. Force subscription channels management (adding/deleting individually).
+  4. Enable or disable the bot.
+  5. Enable or disable bot notifications.
+  6. Enable or disable forwarding user messages to the developer.
+  7. Bot uptime/running time tracker.
+  8. Changing the `/start` welcome message.
+  9. Promoting a secondary admin for the bot.
+- Any persistent configuration must be saved in `stats.json`.
+
+## AI Development Rules & Safeguards (قواعد التطوير الذكي والحماية)
+
+يجب على الذكاء الاصطناعي الالتزام بالضوابط والتدابير البرمجية التالية في كافة البوتات الحالية والجديدة:
+
+### 1. التحقق الشامل من الاشتراك الإجباري (Force Subscription Safeguards)
+- لا تكتفِ بالتحقق من الاشتراك الإجباري عند أمر `/start` فقط.
+- **إلزامي**: يجب التحقق من الاشتراك عند بدء أي لعبة أو خدمة في المجموعات (مثل كتابة كلمة `روليت` أو `/xo`).
+- **إلزامي**: يجب التحقق من الاشتراك عند ضغط أي عضو على أزرار التفاعل والإنلاين (مثل أزرار الانضمام `join_game` أو `xo_join`)، وعرض تنبيه Alert منبثق في حال عدم الاشتراك يبلغه باسم القناة.
+
+### 2. البرمجة الدفاعية وتفادي تجميد الأزرار (Defensive Coded Callbacks)
+- تجنب تماماً استدعاء الفهرس المباشر للمصفوفات القابلة للتفريغ (مثل `channels[0]`) دون فحص طول المصفوفة أولاً.
+- استدعاء فهرس مصفوفة فارغة يتسبب في خطأ صامت (`IndexError`) يؤدي لتجميد الأزرار وظهور عقرب التحميل الدائري للأبد.
+- استخدم دائماً قيم استرداد افتراضية آمنة (مثال: `ch = channels[0] if channels else "@xtraforbots"`).
+
+### 3. الحماية من حلقات التكرار والتحويل اللانهائي (Loop Prevention)
+- عند تفعيل ميزة تحويل رسائل المستخدمين للمطور (Forward Messages)، يجب قصر الاستماع على الرسائل الواردة فقط (`incoming=True`).
+- يجب دائماً تجاهل الرسائل الصادرة من البوت نفسه أو أي بوت آخر (`if sender and sender.bot: return`) لمنع حدوث حلقة تكرار برمجية لانهائية تستهلك موارد الخادم.
+
+### 4. التنسيق الفخم والمعلمة الذكية `/start about` (Deep-Linking Bypass)
+- يجب دعم المعلمة `/start about` في جميع البوتات لتعرض تفاصيل البوت تلقائياً ومباشرة.
+- يجب أن تتخطى هذه المعلمة `/start about` أي قيود مثل الحظر، الصيانة، أو الاشتراك الإجباري لتوفر وصولاً سلساً للمستخدم الجديد.
+- يجب استخدام التنسيق الكلاسيكي الفخم الخالي من الإيموجيات الملونة والاعتماد على الرموز الراقية فقط (`✦`, `▪`, `•`, `«`, `»`).
+
