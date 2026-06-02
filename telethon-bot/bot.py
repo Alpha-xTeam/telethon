@@ -241,14 +241,16 @@ def admin_markup():
 
 
 def auto_markup(config):
-    s = "⏹" if config["enabled"] else "▶️"
-    ss = "auto_stop" if config["enabled"] else "auto_start"
+    s = "⏹ إيقاف النشر" if config.get("enabled") else "▶️ تشغيل النشر"
+    ss = "auto_stop" if config.get("enabled") else "auto_start"
     return [
-        [btn("📝 نص", "auto_settext"), btn("⏱ مدة", "auto_setinterval")],
-        [btn("👥 كروبات", "auto_groups"), btn("📊 حالة", "auto_status")],
+        [btn("➕ إضافة منشور", "auto_add"), btn("📋 المنشورات", "auto_posts_list")],
+        [btn("⏱ تحديد المدة", "auto_setinterval"), btn("👥 الكروبات", "auto_groups")],
+        [btn("📊 حالة النشر", "auto_status")],
         [btn(s, ss)],
         [btn("🔙 رجوع", "menu_main")],
     ]
+
 
 
 def auto_groups_markup(app_data, page=0):
@@ -537,25 +539,98 @@ async def cb_handler(event):
         elif data == "autopublish":
             ac = await get_auto_config(uid)
             _auto_groups_data[uid] = {"config": ac}
-            st = "🟢" if ac["enabled"] else "🔴"
-            import re
-            clean_t = re.sub('<[^<]+?>', '', ac["text"]) if ac.get("text") else ""
-            t = clean_t[:40] + ".." if clean_t else "—"
-            await event.edit(f"── ─ ── ─ ──\n\n**🔄 نشر**\n{st} {t}\n⏱ {ac['interval']}ث\n👥 {len(ac['groups'])}", buttons=auto_markup(ac))
+            st = "🟢" if ac.get("enabled") else "🔴"
+            posts = ac.get("posts", [])
+            if posts:
+                import re
+                clean_t = re.sub('<[^<]+?>', '', posts[0].get("text", "")) if posts[0].get("text") else ""
+                has_media = "🖼️ " if posts[0].get("media_path") else ""
+                t = f"{has_media}{clean_t[:40]}.." if clean_t or has_media else "منشور ميديا"
+            else:
+                t = "لا يوجد"
+            await event.edit(f"── ─ ── ─ ──\n\n**🔄 النشر التلقائي**\nالحالة: {st}\nآخر منشور مضاف: {t}\n⏱ {ac.get('interval', 300)}ث\n👥 {len(ac.get('groups', []))} مجموعة", buttons=auto_markup(ac))
 
         elif data == "auto_status":
             ac = await get_auto_config(uid)
             _auto_groups_data[uid] = {"config": ac}
-            st = "🟢 شغال" if ac["enabled"] else "🔴 موقف"
-            import re
-            clean_t = re.sub('<[^<]+?>', '', ac["text"]) if ac.get("text") else ""
-            t = clean_t[:50] + ".." if clean_t else "—"
-            await event.edit(f"── ─ ── ─ ──\n\nالحالة : {st}\nالنص : {t}\nالمدة : {ac['interval']}ث\nالكروبات : {len(ac['groups'])}", buttons=auto_markup(ac))
+            st = "🟢 شغال" if ac.get("enabled") else "🔴 موقف"
+            posts = ac.get("posts", [])
+            if posts:
+                import re
+                clean_t = re.sub('<[^<]+?>', '', posts[0].get("text", "")) if posts[0].get("text") else ""
+                has_media = "🖼️ " if posts[0].get("media_path") else ""
+                t = f"{has_media}{clean_t[:40]}.." if clean_t or has_media else "منشور ميديا"
+            else:
+                t = "لا يوجد"
+            await event.edit(f"── ─ ── ─ ──\n\nالحالة : {st}\nالمنشورات الحالية : {len(posts)} منشور\nالمدة : {ac.get('interval', 300)}ث\nالكروبات المحددة : {len(ac.get('groups', []))} كروب", buttons=auto_markup(ac))
 
-        elif data == "auto_settext":
+        elif data == "auto_add":
             user_states[uid] = {"action": "auto_text"}
             ac = await get_auto_config(uid)
-            await event.edit("ارسـل النص", buttons=auto_markup(ac))
+            await event.edit("📝 **أرسل المنشور الآن.**\n\nيمكنك إرسال (نص فقط) أو (صورة/ميديا مع نص في الوصف/caption) وسيتم حفظها ودعمها تلقائياً بالكامل في النشر التلقائي.", buttons=[[btn("🔙 رجوع", "autopublish")]])
+
+        elif data == "auto_posts_list":
+            ac = await get_auto_config(uid)
+            posts = ac.get("posts", [])
+            if not posts and ac.get("text"):
+                posts = [{"text": ac.get("text"), "media_path": ac.get("media_path")}]
+                ac["posts"] = posts
+                await save_auto_config(uid, ac)
+            
+            if not posts:
+                await event.edit("⚠️ لا توجد أي منشورات مضافة حالياً. اضغط على 'إضافة منشور' للبدء.", buttons=[[btn("➕ إضافة منشور", "auto_add")], [btn("🔙 رجوع", "autopublish")]])
+            else:
+                text_lines = ["**📋 قائمة المنشورات الحالية:**\n"]
+                buttons = []
+                for idx, p in enumerate(posts):
+                    import re
+                    clean_t = re.sub('<[^<]+?>', '', p.get("text", ""))
+                    title = clean_t[:30] + ".." if clean_t else "[ميديا فقط]"
+                    has_media = "🖼️" if p.get("media_path") else ""
+                    text_lines.append(f"{idx + 1}. {has_media} {title}")
+                    buttons.append([btn(f"❌ حذف {idx + 1}", f"auto_del_{idx}")])
+                buttons.append([btn("🔙 رجوع", "autopublish")])
+                await event.edit("\n".join(text_lines), buttons=buttons)
+
+        elif data.startswith("auto_del_"):
+            idx = int(data.split("_")[2])
+            ac = await get_auto_config(uid)
+            posts = ac.get("posts", [])
+            if 0 <= idx < len(posts):
+                p = posts.pop(idx)
+                mp = p.get("media_path")
+                if mp:
+                    try:
+                        import os
+                        if os.path.exists(mp):
+                            os.remove(mp)
+                    except Exception:
+                        pass
+                ac["posts"] = posts
+                if posts:
+                    ac["text"] = posts[0]["text"]
+                    ac["media_path"] = posts[0]["media_path"]
+                else:
+                    ac["text"] = ""
+                    ac["media_path"] = None
+                await save_auto_config(uid, ac)
+                await event.answer("✅ تم حذف المنشور")
+            
+            posts = ac.get("posts", [])
+            if not posts:
+                await event.edit("⚠️ لا توجد أي منشورات مضافة حالياً. اضغط على 'إضافة منشور' للبدء.", buttons=[[btn("➕ إضافة منشور", "auto_add")], [btn("🔙 رجوع", "autopublish")]])
+            else:
+                text_lines = ["**📋 قائمة المنشورات الحالية:**\n"]
+                buttons = []
+                for idx, p in enumerate(posts):
+                    import re
+                    clean_t = re.sub('<[^<]+?>', '', p.get("text", ""))
+                    title = clean_t[:30] + ".." if clean_t else "[ميديا فقط]"
+                    has_media = "🖼️" if p.get("media_path") else ""
+                    text_lines.append(f"{idx + 1}. {has_media} {title}")
+                    buttons.append([btn(f"❌ حذف {idx + 1}", f"auto_del_{idx}")])
+                buttons.append([btn("🔙 رجوع", "autopublish")])
+                await event.edit("\n".join(text_lines), buttons=buttons)
 
         elif data == "auto_setinterval":
             user_states[uid] = {"action": "auto_interval"}
@@ -571,17 +646,24 @@ async def cb_handler(event):
             tuid = int(parts[1])
             if tuid != uid: return
             ac = _auto_groups_data.get(tuid, {}).get("config") or await get_auto_config(tuid)
-            st = "🟢" if ac["enabled"] else "🔴"
-            import re
-            clean_t = re.sub('<[^<]+?>', '', ac["text"]) if ac.get("text") else ""
-            t = clean_t[:40] + ".." if clean_t else "—"
-            await event.edit(f"── ─ ── ─ ──\n\n**🔄 نشر**\n{st} {t}\n⏱ {ac['interval']}ث\n👥 {len(ac['groups'])}", buttons=auto_markup(ac))
+            st = "🟢" if ac.get("enabled") else "🔴"
+            posts = ac.get("posts", [])
+            if posts:
+                import re
+                clean_t = re.sub('<[^<]+?>', '', posts[0].get("text", "")) if posts[0].get("text") else ""
+                has_media = "🖼️ " if posts[0].get("media_path") else ""
+                t = f"{has_media}{clean_t[:40]}.." if clean_t or has_media else "منشور ميديا"
+            else:
+                t = "لا يوجد"
+            await event.edit(f"── ─ ── ─ ──\n\n**🔄 النشر التلقائي**\nالحالة: {st}\nآخر منشور مضاف: {t}\n⏱ {ac.get('interval', 300)}ث\n👥 {len(ac.get('groups', []))} مجموعة", buttons=auto_markup(ac))
 
         elif data.startswith("ag_t|"):
             parts = data.split("|")
             tuid, gid = int(parts[1]), int(parts[2])
             if tuid != uid: return
             ac = _auto_groups_data.get(tuid, {}).get("config") or await get_auto_config(tuid)
+            if "groups" not in ac:
+                ac["groups"] = []
             if gid in ac["groups"]:
                 ac["groups"] = [g for g in ac["groups"] if g != gid]
             else:
@@ -601,17 +683,21 @@ async def cb_handler(event):
 
         elif data == "auto_start":
             ac = await get_auto_config(uid)
-            if not ac["text"] or not ac["groups"]:
-                await event.edit("تأكد من النص والكروبات", buttons=auto_markup(ac)); return
+            posts = ac.get("posts", [])
+            if not posts and ac.get("text"):
+                posts = [{"text": ac.get("text"), "media_path": ac.get("media_path")}]
+                ac["posts"] = posts
+            if not posts or not ac.get("groups"):
+                await event.edit("⚠️ تأكد من إضافة منشور واختيار الكروبات أولاً!", buttons=auto_markup(ac)); return
             ac["enabled"] = True
             await save_auto_config(uid, ac)
-            await event.edit("✅ شغال", buttons=auto_markup(ac))
+            await event.edit("✅ تم تشغيل النشر التلقائي بنجاح!", buttons=auto_markup(ac))
 
         elif data == "auto_stop":
             ac = await get_auto_config(uid)
             ac["enabled"] = False
             await save_auto_config(uid, ac)
-            await event.edit("✅ موقف", buttons=auto_markup(ac))
+            await event.edit("✅ تم إيقاف النشر التلقائي!", buttons=auto_markup(ac))
 
         elif data == "noop":
             pass
@@ -982,9 +1068,31 @@ async def text_handler(event):
         elif action == "auto_text":
             ac = await get_auto_config(uid)
             from telethon.extensions import html
-            ac["text"] = html.unparse(event.message.message, event.message.entities)
+            import os
+            import time
+            os.makedirs("media", exist_ok=True)
+            
+            media_path = None
+            if event.message.photo or event.message.document:
+                file_name = f"media_{uid}_{int(time.time())}"
+                media_path = await event.message.download_media(file=os.path.join("media", file_name))
+            
+            text_val = html.unparse(event.message.message, event.message.entities) if event.message.message else ""
+            
+            if "posts" not in ac:
+                ac["posts"] = []
+            
+            ac["posts"].append({
+                "text": text_val,
+                "media_path": media_path
+            })
+            
+            ac["text"] = text_val
+            ac["media_path"] = media_path
+            
             await save_auto_config(uid, ac)
-            await event.reply("✅")
+            await event.reply("✅ تم إضافة المنشور إلى قائمة النشر التلقائي بنجاح!")
+
 
         elif action == "auto_interval":
             ac = await get_auto_config(uid)
@@ -1124,20 +1232,45 @@ async def auto_sender():
                 try:
                     prefs = row.get("prefs", {})
                     ac = prefs.get("autopublish", {})
-                    if not (ac.get("enabled") and ac.get("text") and ac.get("groups")):
+                    if not ac.get("enabled") or not ac.get("groups"):
                         continue
+                    
+                    posts = ac.get("posts", [])
+                    if not posts:
+                        if ac.get("text"):
+                            posts = [{"text": ac.get("text"), "media_path": ac.get("media_path")}]
+                            ac["posts"] = posts
+                        else:
+                            continue
+                    
                     uid = row["user_id"]
                     interval = max(int(ac.get("interval", 300)), 10)
                     key = (uid, tuple(ac["groups"]))
                     last = _auto_last_send.get(key, 0)
                     if now - last < interval:
                         continue
+                    
                     oc = await get_user_client(uid)
                     if not oc:
                         continue
+                    
+                    current_idx = ac.get("current_index", 0)
+                    if current_idx >= len(posts):
+                        current_idx = 0
+                    
+                    post_to_send = posts[current_idx]
+                    
+                    ac["current_index"] = (current_idx + 1) % len(posts)
+                    await save_auto_config(uid, ac)
+                    
                     for chat_id in ac["groups"]:
                         try:
-                            await oc.send_message(chat_id, ac["text"], parse_mode='html')
+                            text_val = post_to_send.get("text", "")
+                            media_val = post_to_send.get("media_path")
+                            if media_val:
+                                await oc.send_file(chat_id, media_val, caption=text_val, parse_mode='html')
+                            else:
+                                await oc.send_message(chat_id, text_val, parse_mode='html')
                             await asyncio.sleep(2)
                         except Exception:
                             pass
