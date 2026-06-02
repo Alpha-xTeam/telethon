@@ -767,6 +767,7 @@ async def process_dot_command(event, c):
         await event.reply(f"❌ أمر غير معروف. استخدم `.help`")
 
 
+@bot_client.on(events.NewMessage)
 async def text_handler(event):
     uid = event.sender_id
     if event.raw_text.startswith("."):
@@ -951,11 +952,13 @@ async def handle_admin_text(event, action, text):
     if action == "admin_add_id":
         user_states[uid] = {"action": "admin_add_api", "target_id": text.strip()}
         await event.reply("ارسـل API_ID (رقم)")
+        return
 
     elif action == "admin_add_api":
         target_id = user_states[uid].get("target_id", "")
         user_states[uid] = {"action": "admin_add_hash", "target_id": target_id, "api_id": text.strip()}
         await event.reply("ارسـل API_HASH")
+        return
 
     elif action == "admin_add_hash":
         target_id = user_states[uid].get("target_id", "")
@@ -975,11 +978,13 @@ async def handle_admin_text(event, action, text):
     elif action == "admin_setapi_id":
         user_states[uid] = {"action": "admin_setapi_api", "target_id": text.strip()}
         await event.reply("ارسـل API_ID الجديد")
+        return
 
     elif action == "admin_setapi_api":
         target_id = user_states[uid].get("target_id", "")
         user_states[uid] = {"action": "admin_setapi_hash", "target_id": target_id, "api_id": text.strip()}
         await event.reply("ارسـل API_HASH الجديد")
+        return
 
     elif action == "admin_setapi_hash":
         target_id = user_states[uid].get("target_id", "")
